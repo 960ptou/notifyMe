@@ -1,0 +1,22 @@
+package-mode = false
+
+[tool.poetry]
+name = "notifyMe"
+version = "0.1.0"
+description = "Notify Updates in sites"
+authors = ["Weijie Chen"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+selenium = "^4.27.1"
+bs4 = "^0.0.2"
+pymongo = "^4.10.1"
+fastapi = "^0.115.6"
+uvicorn = "^0.34.0"
+python-dotenv = "^1.0.1"
+
+
+[build-system]
+requires = ["poetry-core>=1.8"]
+build-backend = "poetry.core.masonry.api"

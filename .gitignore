@@ -1,0 +1,5 @@
+notebooks/
+static/
+.env
+test.py
+/__pycache__
