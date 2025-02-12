@@ -1,4 +1,5 @@
-from selenium import webdriver
+# from selenium import webdriver
+from seleniumbase import Driver
 from bs4 import BeautifulSoup
 from pymongo import MongoClient
 
@@ -35,9 +36,11 @@ webapp = WebApp(database, pending_db)
 
 
 
-def scan_site(url, driver, extraction_fn = None):
-    driver.get(url)
+def scan_site(url, driver : Driver, extraction_fn = None):
+    driver.uc_open(url)
+    driver.uc_gui_click_captcha()
     current_page = driver.execute_script("return document.documentElement.outerHTML;")
+
     soup = BeautifulSoup(current_page, 'html.parser')
 
     # this operation is time consuming & it's unlikely to change
@@ -45,52 +48,69 @@ def scan_site(url, driver, extraction_fn = None):
         result = apply_extraction(url, soup.body) # NOTE body use avoid script tags etc..
     else:
         result = extraction_fn(url, soup.body)
+
     return soup, result
 
 
-last_sent = datetime.now()
-def run(db : NotifyDB, pending_db : PoppingDB, force_notify : 'hour' = 1):
-    global last_sent
+def run(db : NotifyDB, pending_db : PoppingDB):
+    # global last_sent
     # driver will live and die in the function
-    driver = webdriver.Chrome()
+    # driver = webdriver.Chrome()
+    driver = Driver(uc=True)
+    driver.implicitly_wait(10)
 
     messages = []
     construct_message = ""
-    all_current_stored_sites = db.get_all_links()
+    all_current_stored_sites = sorted(db.get_all_links())
 
     # checking if pending DB has anything
     new_counter = 0
     for site in pending_db:
         print(f"Adding {site=}")
         new_counter += 1
-        try:
-            soup, current_values = scan_site(site, driver)
-            db.post(site, soup.title.text, current_values)
+        for tries in range(1, 3+1):
+            try:
+                soup, current_values = scan_site(site, driver)
+                title = soup.title.text
+                
+            except Exception as e:
+                driver.refresh()
+                print(f"Attempt {tries} on adding site : {site} Failed")
+                print(f"Reason : {e}")
+                continue
+
+            db.post(site, title, current_values)
             construct_message += f"Site : {site} Added\n\n"
-        except Exception as e:
-            print(f"ERROR {e=}")
-        print(f"{site} Added")
+            break
 
 
     for site in all_current_stored_sites:
-        try:
-            previous_values = db.get(site)
+        for tries in range(1, 3+1): # 3 tries
+            try:
+                previous_values = db.get(site)
+                previous_values_content = previous_values["latest-search-content"]
 
-            previous_values_content = previous_values["latest-search-content"]
-            extraction_function = quick_extract(previous_values_content[0])
-            soup, current_values = scan_site(site, driver, extraction_function)
-            is_same = comparer(previous_values_content[0], current_values[0])
-            
-            db.put(site) if is_same else db.put(site, soup.title.text, current_values)
+                extraction_function = quick_extract(previous_values_content[0])
 
+                soup, current_values = scan_site(site, driver, extraction_function)
+                is_same = comparer(previous_values_content[0], current_values[0])
+                title = soup.title.text
+            except Exception as e:
+                driver.refresh()
+                print(f"Attempt {tries} on site : {site} Failed")
+                print(f"Reason : {e}")
+                continue
+
+            # Db
+            db.put(site) if is_same else db.put(site, title, current_values)
+            # message info gathering
             messages.append({
                 "same" : is_same,
                 "url" : site,
-                "title" : soup.title.text,
+                "title" : title,
                 "latest_update" : previous_values["latest-updated-date"]
             })
-        except Exception as e:
-            print(f"ERROR {e=}")
+            break
             
 
     driver.quit()
@@ -121,25 +141,16 @@ def run(db : NotifyDB, pending_db : PoppingDB, force_notify : 'hour' = 1):
     
     print(f"{datetime.now().strftime('%B %d, %Y - (%I:%M:%S %p)')}")
 
-    # Not sending if
-    time_elapsed_since_last_sent = (datetime.now() - last_sent).total_seconds() / (60 * 60)
-    
-    if update_counter == 0 and new_counter == 0 and (time_elapsed_since_last_sent <= force_notify * 0.9): # every n hours => 0.9 to make 1h => 54min so it doesn't happen on 1h failing
-        return 
-
-    last_sent = datetime.now()
-
-    print("Sending")
     send_email(sender_email, app_password, recipient_email, subject_message,construct_message)
 
-def conditional_run(active_hours : range, force_notify_period: 'hour'):
+def conditional_run(active_hours : range):
     if (datetime.now().hour not in active_hours):
         return
     
-    run(database, pending_db, force_notify_period)
+    run(database, pending_db)
 
 def run_web():
-    uvicorn.run(webapp, host="localhost", port=3000)
+    uvicorn.run(webapp, host="0.0.0.0", port=3000)
 
 
 
@@ -152,9 +163,9 @@ if __name__ == "__main__":
 
     atexit.register(lambda : print('Application is ending!'))
 
-    sleep_until_next_interval(15)
+    # sleep_until_next_interval(60)
 
 
     while True:
-        conditional_run(range(5,22+1), 1) # from 5AM to 10 PM
-        sleep_until_next_interval(30)
+        conditional_run(range(5,22+1)) # from 5AM to 10 PM
+        sleep_until_next_interval(60 * 3) # every hour

@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, APIRouter
-from database import PoppingDB, NotifyDB
+from database import PoppingDB, NotifyDB, move_all_from_notify_to_popping
 from utils import run_once
 
 @run_once
@@ -38,6 +38,12 @@ def WebApp(notifyDB : NotifyDB,pendingDB : PoppingDB):
         except ValueError:
             raise HTTPException(status_code=404, detail="Site not found")
         return {"message": "Site deleted successfully"}
+    
+
+    @router.post("/refresh")
+    async def refresh_database():
+        move_all_from_notify_to_popping(notifyDB, pendingDB)
+        return {"message" : "Site Refresh successful"}
     
 
     app.include_router(router)

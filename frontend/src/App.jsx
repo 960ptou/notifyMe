@@ -85,10 +85,10 @@ const SiteManager = () => {
     await fetchSites("pending");
   };
 
-  // Refresh every 5 minutes
+  // Refresh every 30 minutes
   useEffect(() => {
     refresh();
-    const interval = setInterval(refresh, 5 * 60 * 1000); 
+    const interval = setInterval(refresh, 30 * 60 * 1000); 
     return () => clearInterval(interval);
   }, []);
 
@@ -115,6 +115,14 @@ const SiteManager = () => {
     }
   };
 
+  const refreshDatabase = async () => {
+    try {
+      await axios.post("api/refresh");
+    } catch (error) {
+      console.log("Error refreshing site:", error)
+    }
+  }
+
   return (
     <Box sx={{ padding: 4 }}>
       <Box
@@ -128,6 +136,14 @@ const SiteManager = () => {
         </Typography>
         <Button variant="contained" color="primary" onClick={refresh}>
           Refresh
+        </Button>
+        <Button variant="outlined" color="primary" onClick={() => {
+          if (window.confirm(`Do you really want move all to pending?`)){
+            refreshDatabase();
+            refresh();
+          }
+        }}>
+          Move All From Notification To Pending
         </Button>
       </Box>
 

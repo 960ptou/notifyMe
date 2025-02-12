@@ -100,3 +100,11 @@ class PoppingDB:
         for url in all_current_url:
             yield url
             self.delete(url)
+
+
+def move_all_from_notify_to_popping(ndb : NotifyDB, pdb : PoppingDB):
+    all_ndb_url = ndb.get_all_links()
+    for url in all_ndb_url:
+        ndb.delete(url)
+        pdb.post(url)
+    
