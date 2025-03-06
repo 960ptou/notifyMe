@@ -3,7 +3,7 @@ from seleniumbase import Driver
 from bs4 import BeautifulSoup
 from pymongo import MongoClient
 
-from utils import sleep_until_next_interval, time_difference_description
+from utils import time_difference_description, get_local_ip, time_iterator, hour_range
 from email_util import send_email
 from algorithm import comparer, apply_extraction, quick_extract
 from database import NotifyDB, PoppingDB
@@ -19,7 +19,7 @@ from threading import Thread
 
 from dotenv import load_dotenv
 import os
-
+import time
 load_dotenv()
 
 sender_email = os.getenv("SENDER_EMAIL")
@@ -27,6 +27,7 @@ app_password = os.getenv("APP_PASSWORD")
 recipient_email = os.getenv("RECIPIENT_EMAIL")
 db_client = os.getenv("DB_CLIENT")
 dbname = os.getenv("DB_NAME")
+PORT = 3000
 
 
 client = MongoClient(db_client)  
@@ -117,17 +118,30 @@ def run(db : NotifyDB, pending_db : PoppingDB):
 
     
     update_counter = 0
+
+
     for message in messages:
         same = message["same"]
         title = " ".join(message['title'].split()) # pretty only at output
         update_counter += not(same)
         
-        update_msg = (f"--- Updated {time_difference_description(message['latest_update'])}" if message['latest_update'] else "Never - Updated") + "\n"
+        update_msg = f"--- Updated {time_difference_description(message['latest_update'])}" if message['latest_update'] else "Never - Updated"
+        update_msg = update_msg if same else "--- Updated now"
+        update_msg += "\n"
+
+        composed_message = f'<p><a href="{message["url"]}" target="_blank">{title}</a></p>\n{update_msg}\n'
+
         
-        if not same:
-            update_msg = "--- Updated now\n"
-            
-        construct_message += f'<p><a href="{message["url"]}" target="_blank">{title}</a></p>\n{update_msg}\n'
+
+        if same:
+            # append
+            construct_message += composed_message
+        else:
+            # prepend if updated
+            construct_message = composed_message + construct_message
+
+    hosting_address = f"http://{get_local_ip()}:{PORT}/"
+    construct_message += f'<p> Local Address if @ home  <a href="{hosting_address}" target="_blank"> {hosting_address} </a> </p> \n'
 
 
     first_string = f"Updates : {update_counter}"
@@ -135,22 +149,13 @@ def run(db : NotifyDB, pending_db : PoppingDB):
     if new_counter > 0:
         first_string += f" & {new_counter} New Sites Added"
 
-
     subject_message = f"{first_string} @ {datetime.now().strftime('%B %d, %Y - (%I:%M %p)')}"
-
-    
-    print(f"{datetime.now().strftime('%B %d, %Y - (%I:%M:%S %p)')}")
 
     send_email(sender_email, app_password, recipient_email, subject_message,construct_message)
 
-def conditional_run(active_hours : range):
-    if (datetime.now().hour not in active_hours):
-        return
-    
-    run(database, pending_db)
 
 def run_web():
-    uvicorn.run(webapp, host="0.0.0.0", port=3000)
+    uvicorn.run(webapp, host="0.0.0.0", port=PORT)
 
 
 
@@ -163,9 +168,14 @@ if __name__ == "__main__":
 
     atexit.register(lambda : print('Application is ending!'))
 
-    # sleep_until_next_interval(60)
 
+    running_start_time = 5 # 5 AM
+    running_end_time = 23 # 11 PM
+    duration_h_m = (3, 0) # every 3 hrs
+    for next_time in time_iterator(hour_range(running_start_time, running_end_time), duration_h_m):
+        run(database, pending_db)
 
-    while True:
-        conditional_run(range(5,22+1)) # from 5AM to 10 PM
-        sleep_until_next_interval(60 * 3) # every hour
+        now = datetime.now()
+        print(f"It's Currently : {datetime.now().strftime('%B %d, %Y - (%I:%M:%S %p)')}")
+        print(f"Sleep Until {next_time.strftime('%B %d, %Y - (%I:%M:%S %p)')} -> {(next_time - now).total_seconds()}s")
+        time.sleep( (next_time - now).total_seconds() )

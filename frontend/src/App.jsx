@@ -65,6 +65,7 @@ const SiteManager = () => {
   const [notificationSites, setNotificationSites] = useState([]);
   const [pendingSites, setPendingSites] = useState([]);
   const [userAddingSite, setUserAddingSite] = useState({ url: "" });
+  const [sortNotificationByLatest, setSortNotificationByLatest] = useState(false);
 
   const fetchSites = async (route) => {
     const setter = {
@@ -153,19 +154,36 @@ const SiteManager = () => {
           <TableHead>
             <TableRow>
               <TableCell>Title</TableCell>
-              <TableCell>Latest Update</TableCell>
+
+              <TableCell>Latest Update
+                <Button
+                  style={{
+                    backgroundColor: sortNotificationByLatest ? "#d8e5f3" : "",
+                  }}
+                  onClick={()=>setSortNotificationByLatest(!sortNotificationByLatest)}
+                >
+
+                  &#x21C5;
+                </Button> 
+              </TableCell>
+
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {notificationSites.map((site) => (
+            {(sortNotificationByLatest 
+            ? [...notificationSites].sort((a, b) => new Date(b["latest-updated-date"]) - new Date(a["latest-updated-date"]))
+            : notificationSites )
+            .map((site) => (
               <TableRow key={site.url}>
                 <TableCell>
                   <a href={site.url} target="_blank" rel="noopener noreferrer">
                     {site.title}
                   </a>
                 </TableCell>
+
                 <TableCell>{timeDifferenceDescription(site["latest-updated-date"])}</TableCell>
+
                 <TableCell>
                   <Button
                     variant="outlined"
@@ -245,6 +263,8 @@ const SiteManager = () => {
         </Table>
       </TableContainer>
     </Box>
+
+    
   );
 };
 
